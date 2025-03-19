@@ -2,12 +2,13 @@
   "name": "f1gpt",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "ts-node ./scripts/loadDB.ts"
+    "seed": "tsx ./scripts/loadDB.ts"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^1.5.0",

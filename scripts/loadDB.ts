@@ -1,8 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { PuppeteerWebBaseLoader } from "@langchain/community/document_loaders/web/puppeteer";
-import OpenAI from "openai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-
 import "dotenv/config";
 
 type SimilarityMetric = "cosine" | "dot_product" | "euclidean";
@@ -12,12 +11,9 @@ const {
   ASTRA_DB_COLLECTION,
   ASTRA_DB_ENDPOINT_URL,
   ASTRA_DB_TOKEN,
-  OPEN_AI_KEY,
 } = process.env;
 
-const openai = new OpenAI({
-  apiKey: OPEN_AI_KEY,
-});
+let embeddingPipeline: any;
 
 const f1Data = [
   "https://www.formula1.com/",
@@ -47,9 +43,15 @@ const splitter = new RecursiveCharacterTextSplitter({
 const createCollection = async (
   similarityMetric: SimilarityMetric = "dot_product"
 ) => {
+  // Initialize the embedding pipeline with a sentence transformer model
+  const { pipeline } = await import("@xenova/transformers");
+  embeddingPipeline = await pipeline(
+    "feature-extraction",
+    "Xenova/all-MiniLM-L6-v2"
+  );
   const res = await db.createCollection(ASTRA_DB_COLLECTION, {
     vector: {
-      dimension: 1536,
+      dimension: 384, // Changed to match MiniLM-L6-v2 output dimension
       metric: similarityMetric,
     },
   });
@@ -59,23 +61,25 @@ const createCollection = async (
 const loadData = async () => {
   const collection = await db.collection(ASTRA_DB_COLLECTION);
 
-  f1Data.forEach(async (url: string) => {
+  for (const url of f1Data) {
     const content = await scrapePage(url);
     const chunks = await splitter.splitText(content);
-    chunks.forEach(async (chunk) => {
-      const embedding = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: chunk,
-        encoding_format: "float",
+
+    for (const chunk of chunks) {
+      // Generate embeddings using the sentence transformer model
+      const output = await embeddingPipeline(chunk, {
+        pooling: "mean",
+        normalize: true,
       });
-      const vector = embedding.data[0].embedding;
+      const vector = Array.from(output.data);
+
       const res = await collection.insertOne({
         $vector: vector,
         text: chunk,
       });
       console.log(res);
-    });
-  });
+    }
+  }
 };
 
 const scrapePage = async (url: string) => {
